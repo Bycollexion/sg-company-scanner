@@ -46,56 +46,61 @@ def extract_from_linkedin(company_name, session):
         ]
         
         for search_url in search_urls:
-            response = session.get(search_url, timeout=10)
+            try:
+                response = session.get(search_url, timeout=10)
+                print(f"LinkedIn response for {company_name}: {response.status_code}")
+                
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    text_content = soup.get_text().lower()
+                    
+                    # Enhanced patterns for employee count
+                    employee_patterns = [
+                        r'([\d,\.]+)[\+\s]*employees',
+                        r'([\d,\.]+)[\+\s]*workers',
+                        r'([\d,\.]+)[\+\s]*staff',
+                        r'team of\s*([\d,\.]+)',
+                        r'([\d,\.]+)\s*people',
+                        r'([\d,\.]+)k\+?\s*employees',
+                    ]
+                    
+                    for pattern in employee_patterns:
+                        match = re.search(pattern, text_content, re.IGNORECASE)
+                        if match:
+                            count_str = match.group(1).replace(',', '')
+                            if 'k' in count_str.lower():
+                                count = float(count_str.lower().replace('k', '')) * 1000
+                            else:
+                                count = float(count_str)
+                            
+                            is_sg = 'singapore' in text_content.lower() or ' sg ' in text_content.lower()
+                            print(f"Found LinkedIn data for {company_name}: {count} employees, SG: {is_sg}")
+                            
+                            return {
+                                'count': int(count),
+                                'source': 'LinkedIn',
+                                'url': search_url,
+                                'is_sg': is_sg
+                            }
+            except requests.exceptions.RequestException as e:
+                print(f"LinkedIn request error for {company_name} at {search_url}: {str(e)}")
+                continue
             
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'lxml')
-                text_content = soup.get_text().lower()
-                
-                # Enhanced patterns for employee count
-                employee_patterns = [
-                    r'([\d,\.]+)[\+\s]*employees',
-                    r'([\d,\.]+)[\+\s]*workers',
-                    r'([\d,\.]+)[\+\s]*staff',
-                    r'team of\s*([\d,\.]+)',
-                    r'([\d,\.]+)\s*people',
-                    r'([\d,\.]+)k\+?\s*employees',
-                ]
-                
-                for pattern in employee_patterns:
-                    match = re.search(pattern, text_content, re.IGNORECASE)
-                    if match:
-                        count_str = match.group(1).replace(',', '')
-                        if 'k' in count_str.lower():
-                            count = float(count_str.lower().replace('k', '')) * 1000
-                        else:
-                            count = float(count_str)
-                        return {
-                            'count': int(count),
-                            'source': 'LinkedIn',
-                            'url': search_url,
-                            'is_sg': 'Singapore' in response.text or 'SG' in response.text
-                        }
     except Exception as e:
-        print(f"LinkedIn error for {company_name}: {str(e)}")
+        print(f"LinkedIn general error for {company_name}: {str(e)}")
     return None
 
 def extract_from_google(company_name, session):
     try:
-        # Enhanced search queries
-        search_queries = [
-            f"{company_name} singapore employees site:linkedin.com",
-            f"{company_name} singapore number of employees",
-            f"{company_name} singapore company size",
-            f"{company_name} singapore workforce"
-        ]
+        search_query = f"{company_name} company employees singapore site:linkedin.com OR site:glassdoor.com"
+        search_url = f"https://www.google.com/search?q={search_query}"
         
-        for query in search_queries:
-            search_url = f"https://www.google.com/search?q={query}"
+        try:
             response = session.get(search_url, timeout=10)
+            print(f"Google response for {company_name}: {response.status_code}")
             
             if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'lxml')
+                soup = BeautifulSoup(response.text, 'html.parser')
                 text_content = soup.get_text().lower()
                 
                 # Enhanced patterns for employee count
@@ -106,8 +111,6 @@ def extract_from_google(company_name, session):
                     r'team of\s*([\d,\.]+)',
                     r'([\d,\.]+)\s*people',
                     r'([\d,\.]+)k\+?\s*employees',
-                    r'company size:\s*([\d,\.]+)',
-                    r'workforce of\s*([\d,\.]+)'
                 ]
                 
                 for pattern in employee_patterns:
@@ -118,18 +121,45 @@ def extract_from_google(company_name, session):
                             count = float(count_str.lower().replace('k', '')) * 1000
                         else:
                             count = float(count_str)
+                        
+                        is_sg = 'singapore' in text_content.lower() or ' sg ' in text_content.lower()
+                        print(f"Found Google data for {company_name}: {count} employees, SG: {is_sg}")
+                        
                         return {
                             'count': int(count),
-                            'source': 'Google Search',
+                            'source': 'Google',
                             'url': search_url,
-                            'is_sg': True
+                            'is_sg': is_sg
                         }
-            
-            # Add delay between Google searches
-            time.sleep(random.uniform(1, 2))
+                
+                # Try to find employee count in search results snippets
+                snippets = soup.find_all('div', {'class': 'VwiC3b'})
+                for snippet in snippets:
+                    snippet_text = snippet.get_text().lower()
+                    for pattern in employee_patterns:
+                        match = re.search(pattern, snippet_text)
+                        if match:
+                            count_str = match.group(1).replace(',', '')
+                            if 'k' in count_str.lower():
+                                count = float(count_str.lower().replace('k', '')) * 1000
+                            else:
+                                count = float(count_str)
+                            
+                            is_sg = 'singapore' in snippet_text or ' sg ' in snippet_text
+                            print(f"Found Google snippet data for {company_name}: {count} employees, SG: {is_sg}")
+                            
+                            return {
+                                'count': int(count),
+                                'source': 'Google',
+                                'url': search_url,
+                                'is_sg': is_sg
+                            }
+        
+        except requests.exceptions.RequestException as e:
+            print(f"Google request error for {company_name}: {str(e)}")
             
     except Exception as e:
-        print(f"Google error for {company_name}: {str(e)}")
+        print(f"Google general error for {company_name}: {str(e)}")
     return None
 
 def extract_from_jobstreet(company_name, session):
@@ -315,7 +345,12 @@ def index():
 @app.route('/search', methods=['POST'])
 def search():
     data = request.get_json()
-    companies = data.get('companies', [])
+    
+    # Handle both single company and list of companies
+    if 'company' in data:
+        companies = [data['company']]
+    else:
+        companies = data.get('companies', [])
     
     if not companies:
         return jsonify([])
@@ -332,9 +367,12 @@ def search():
         
         results = []
         for future in as_completed(future_to_company):
-            result = future.result()
-            if result:
-                results.append(result)
+            try:
+                result = future.result()
+                if result:
+                    results.append(result)
+            except Exception as e:
+                print(f"Error processing company: {str(e)}")
             
             # Add random delay to avoid rate limiting
             time.sleep(random.uniform(0.5, 1.5))
