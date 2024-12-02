@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Singapore Company Scanner</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Singapore Company Scanner</h1>
+            <p>Search for employee count information from multiple sources</p>
+        </header>
+
+        <main>
+            <div class="search-container">
+                <div class="input-group">
+                    <label for="companies">Enter Company Names (one per line, max 50)</label>
+                    <textarea 
+                        id="companies" 
+                        rows="5" 
+                        placeholder="Example:
+DBS Bank
+Grab
+Sea Limited
+Shopee"></textarea>
+                </div>
+                <button id="searchBtn" class="primary-button">
+                    <span class="button-text">Search Companies</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div id="resultsContainer" class="hidden">
+                <h2>Search Results</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Company</th>
+                                <th>Employees</th>
+                                <th>Location</th>
+                                <th>Source</th>
+                                <th>LinkedIn</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+</html>
