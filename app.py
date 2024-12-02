@@ -32,23 +32,31 @@ def get_session():
     if not hasattr(thread_local, "session"):
         thread_local.session = requests.Session()
         thread_local.session.headers.update({
-            'User-Agent': UserAgent().random
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive',
         })
+        # Configure session with longer timeouts
+        thread_local.session.timeout = (5, 15)  # (connect timeout, read timeout)
     return thread_local.session
 
 def extract_from_linkedin(company_name, session):
     try:
         # Try both direct company name and with hyphens
-        company_slug = company_name.lower().replace(' ', '-')
-        search_urls = [
-            f"https://www.linkedin.com/company/{company_slug}",
-            f"https://www.linkedin.com/company/{company_name.lower()}"
+        company_variations = [
+            company_name.lower(),
+            company_name.lower().replace(' ', '-'),
+            company_name.lower().replace(' ', ''),
+            f"{company_name.lower()}-singapore",
+            f"{company_name.lower().replace(' ', '-')}-sg"
         ]
         
-        for search_url in search_urls:
+        for company_slug in company_variations:
+            search_url = f"https://www.linkedin.com/company/{company_slug}"
             try:
-                response = session.get(search_url, timeout=10)
-                print(f"LinkedIn response for {company_name}: {response.status_code}")
+                response = session.get(search_url, timeout=(5, 15))
+                print(f"LinkedIn response for {company_name} ({company_slug}): {response.status_code}")
                 
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.text, 'html.parser')
@@ -62,6 +70,8 @@ def extract_from_linkedin(company_name, session):
                         r'team of\s*([\d,\.]+)',
                         r'([\d,\.]+)\s*people',
                         r'([\d,\.]+)k\+?\s*employees',
+                        r'employs\s*([\d,\.]+)',
+                        r'workforce of\s*([\d,\.]+)'
                     ]
                     
                     for pattern in employee_patterns:
@@ -85,6 +95,11 @@ def extract_from_linkedin(company_name, session):
             except requests.exceptions.RequestException as e:
                 print(f"LinkedIn request error for {company_name} at {search_url}: {str(e)}")
                 continue
+            except Exception as e:
+                print(f"LinkedIn parsing error for {company_name} at {search_url}: {str(e)}")
+                continue
+            
+            time.sleep(random.uniform(0.5, 1))
             
     except Exception as e:
         print(f"LinkedIn general error for {company_name}: {str(e)}")
@@ -92,52 +107,64 @@ def extract_from_linkedin(company_name, session):
 
 def extract_from_google(company_name, session):
     try:
-        search_query = f"{company_name} company employees singapore site:linkedin.com OR site:glassdoor.com"
-        search_url = f"https://www.google.com/search?q={search_query}"
+        # Try multiple search queries
+        search_queries = [
+            f"{company_name} singapore company employees site:linkedin.com",
+            f"{company_name} singapore number of employees site:linkedin.com",
+            f"{company_name} singapore company size site:glassdoor.com",
+            f"{company_name} singapore employees site:jobstreet.com.sg"
+        ]
         
-        try:
-            response = session.get(search_url, timeout=10)
-            print(f"Google response for {company_name}: {response.status_code}")
-            
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                text_content = soup.get_text().lower()
+        for search_query in search_queries:
+            try:
+                search_url = f"https://www.google.com/search?q={search_query}"
+                response = session.get(search_url, timeout=(5, 15))
+                print(f"Google response for {company_name} (query: {search_query}): {response.status_code}")
                 
-                # Enhanced patterns for employee count
-                employee_patterns = [
-                    r'([\d,\.]+)[\+\s]*employees',
-                    r'([\d,\.]+)[\+\s]*workers',
-                    r'([\d,\.]+)[\+\s]*staff',
-                    r'team of\s*([\d,\.]+)',
-                    r'([\d,\.]+)\s*people',
-                    r'([\d,\.]+)k\+?\s*employees',
-                ]
-                
-                for pattern in employee_patterns:
-                    match = re.search(pattern, text_content, re.IGNORECASE)
-                    if match:
-                        count_str = match.group(1).replace(',', '')
-                        if 'k' in count_str.lower():
-                            count = float(count_str.lower().replace('k', '')) * 1000
-                        else:
-                            count = float(count_str)
-                        
-                        is_sg = 'singapore' in text_content.lower() or ' sg ' in text_content.lower()
-                        print(f"Found Google data for {company_name}: {count} employees, SG: {is_sg}")
-                        
-                        return {
-                            'count': int(count),
-                            'source': 'Google',
-                            'url': search_url,
-                            'is_sg': is_sg
-                        }
-                
-                # Try to find employee count in search results snippets
-                snippets = soup.find_all('div', {'class': 'VwiC3b'})
-                for snippet in snippets:
-                    snippet_text = snippet.get_text().lower()
+                if response.status_code == 200:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    text_content = soup.get_text().lower()
+                    
+                    # Enhanced patterns for employee count
+                    employee_patterns = [
+                        r'([\d,\.]+)[\+\s]*employees',
+                        r'([\d,\.]+)[\+\s]*workers',
+                        r'([\d,\.]+)[\+\s]*staff',
+                        r'team of\s*([\d,\.]+)',
+                        r'([\d,\.]+)\s*people',
+                        r'([\d,\.]+)k\+?\s*employees',
+                        r'employs\s*([\d,\.]+)',
+                        r'workforce of\s*([\d,\.]+)',
+                        r'company size:\s*([\d,\.]+)',
+                        r'([\d,\.]+)\s*employees on linkedin'
+                    ]
+                    
+                    # First try to find in search result snippets
+                    snippets = soup.find_all(['div', 'span'], {'class': ['VwiC3b', 'aCOpRe']})
+                    for snippet in snippets:
+                        snippet_text = snippet.get_text().lower()
+                        for pattern in employee_patterns:
+                            match = re.search(pattern, snippet_text)
+                            if match:
+                                count_str = match.group(1).replace(',', '')
+                                if 'k' in count_str.lower():
+                                    count = float(count_str.lower().replace('k', '')) * 1000
+                                else:
+                                    count = float(count_str)
+                                
+                                is_sg = 'singapore' in snippet_text or ' sg ' in snippet_text
+                                print(f"Found Google snippet data for {company_name}: {count} employees, SG: {is_sg}")
+                                
+                                return {
+                                    'count': int(count),
+                                    'source': 'Google',
+                                    'url': search_url,
+                                    'is_sg': is_sg
+                                }
+                    
+                    # Then try in full page content
                     for pattern in employee_patterns:
-                        match = re.search(pattern, snippet_text)
+                        match = re.search(pattern, text_content)
                         if match:
                             count_str = match.group(1).replace(',', '')
                             if 'k' in count_str.lower():
@@ -145,8 +172,8 @@ def extract_from_google(company_name, session):
                             else:
                                 count = float(count_str)
                             
-                            is_sg = 'singapore' in snippet_text or ' sg ' in snippet_text
-                            print(f"Found Google snippet data for {company_name}: {count} employees, SG: {is_sg}")
+                            is_sg = 'singapore' in text_content.lower() or ' sg ' in text_content.lower()
+                            print(f"Found Google page data for {company_name}: {count} employees, SG: {is_sg}")
                             
                             return {
                                 'count': int(count),
@@ -154,9 +181,15 @@ def extract_from_google(company_name, session):
                                 'url': search_url,
                                 'is_sg': is_sg
                             }
-        
-        except requests.exceptions.RequestException as e:
-            print(f"Google request error for {company_name}: {str(e)}")
+                
+                time.sleep(random.uniform(1, 2))
+                
+            except requests.exceptions.RequestException as e:
+                print(f"Google request error for {company_name}: {str(e)}")
+                continue
+            except Exception as e:
+                print(f"Google parsing error for {company_name}: {str(e)}")
+                continue
             
     except Exception as e:
         print(f"Google general error for {company_name}: {str(e)}")
@@ -165,7 +198,7 @@ def extract_from_google(company_name, session):
 def extract_from_jobstreet(company_name, session):
     try:
         search_url = f"https://www.jobstreet.com.sg/en/companies/{company_name.lower().replace(' ', '-')}"
-        response = session.get(search_url, timeout=10)
+        response = session.get(search_url, timeout=(5, 15))
         
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'lxml')
@@ -194,7 +227,7 @@ def extract_from_jobstreet(company_name, session):
 def extract_from_glassdoor(company_name, session):
     try:
         search_url = f"https://www.glassdoor.sg/Overview/Working-at-{company_name.lower().replace(' ', '-')}"
-        response = session.get(search_url, timeout=10)
+        response = session.get(search_url, timeout=(5, 15))
         
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'lxml')
