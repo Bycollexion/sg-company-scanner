@@ -11,6 +11,7 @@ from urllib.parse import quote_plus
 import concurrent.futures
 import threading
 from fake_useragent import UserAgent
+import re
 
 # Configure logging
 logging.basicConfig(
@@ -187,5 +188,5 @@ def search_companies():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5002))
+    port = int(os.environ.get('PORT', 5003))
     app.run(host='0.0.0.0', port=port)
