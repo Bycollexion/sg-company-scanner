@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SG Company Scanner - Memory Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='game.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>SG Company Scanner</h1>
+        
+        <nav class="main-nav">
+            <a href="/" class="nav-link">Search</a>
+            <a href="/game" class="nav-link active">Memory Game</a>
+        </nav>
+
+        <div class="game-container">
+            <div class="game-controls">
+                <button id="startGame" class="game-button">Start New Game</button>
+                <div class="game-stats">
+                    <span>Time: <span id="timer">0</span>s</span>
+                    <span>Moves: <span id="moves">0</span></span>
+                </div>
+            </div>
+
+            <div class="game-grid" id="gameGrid"></div>
+
+            <div class="leaderboard">
+                <h2>Leaderboard</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Player</th>
+                            <th>Time</th>
+                            <th>Moves</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboardBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='game.js') }}"></script>
+</body>
+</html>

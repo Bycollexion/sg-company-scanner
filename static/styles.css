@@ -1,0 +1,352 @@
+:root {
+    --bg-dark: #1e1e1e;
+    --bg-darker: #000000;
+    --bg-light: #2d2d2d;
+    --text: #e0e0e0;
+    --text-dim: #808080;
+    --primary: #00ff9d;
+    --secondary: #ff3864;
+    --accent1: #00b8ff;
+    --accent2: #ff8b39;
+    --accent3: #a64dff;
+    --success: #00ff9d;
+    --error: #ff3864;
+    --border: #333333;
+    --glow: 0 0 10px rgba(0, 255, 157, 0.2);
+    
+    /* Source colors */
+    --linkedin: #0077b5;
+    --google: #4285f4;
+    --jobstreet: #ff6b00;
+    --glassdoor: #0caa41;
+}
+
+body {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    line-height: 1.6;
+    color: var(--text);
+    background: var(--bg-darker);
+    margin: 0;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: var(--bg-dark);
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--primary);
+    text-align: center;
+    margin: 0 0 2rem 0;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-shadow: var(--glow);
+}
+
+.search-container {
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    transition: all 0.3s ease;
+    display: flex;
+    gap: 10px;
+    margin-bottom: 2rem;
+    align-items: flex-start;
+}
+
+.search-box {
+    position: relative;
+    width: 100%;
+    flex: 1;
+}
+
+textarea#companyInput {
+    width: 100%;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: var(--text);
+    padding: 12px;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 14px;
+    border-radius: 4px;
+    resize: vertical;
+    min-height: 80px;
+}
+
+textarea#companyInput:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: var(--glow);
+}
+
+textarea#companyInput::placeholder {
+    color: var(--text-dim);
+}
+
+.search-help {
+    position: absolute;
+    bottom: -20px;
+    left: 0;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    opacity: 0;
+    transform: translateY(5px);
+    transition: all 0.2s ease;
+}
+
+.search-box:focus-within .search-help {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+button#searchButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: var(--primary);
+    color: black;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 1rem;
+    height: 40px;
+}
+
+button#searchButton:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+button#searchButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.search-icon {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+    font-size: 16px;
+}
+
+.table-container {
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 2rem;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th {
+    background: var(--bg-dark);
+    padding: 1rem;
+    text-align: left;
+    font-weight: 500;
+    color: var(--primary);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+}
+
+td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+    color: var(--text);
+}
+
+tr:hover td {
+    background: var(--bg-dark);
+}
+
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+.sg-badge {
+    background: rgba(0, 255, 157, 0.1);
+    color: var(--success);
+    border: 1px solid var(--success);
+}
+
+.global-badge {
+    background: rgba(255, 56, 100, 0.1);
+    color: var(--error);
+    border: 1px solid var(--error);
+}
+
+/* Source badges */
+.source-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin: 0.25rem;
+    cursor: help;
+    transition: all 0.2s ease;
+}
+
+.source-badge.main-source {
+    font-weight: 600;
+    position: relative;
+}
+
+.source-badge.main-source::after {
+    content: '✓';
+    margin-left: 4px;
+    color: var(--success);
+}
+
+.linkedin-badge {
+    background: rgba(0, 119, 181, 0.1);
+    color: var(--linkedin);
+    border: 1px solid var(--linkedin);
+}
+
+.google-badge {
+    background: rgba(66, 133, 244, 0.1);
+    color: var(--google);
+    border: 1px solid var(--google);
+}
+
+.jobstreet-badge {
+    background: rgba(255, 107, 0, 0.1);
+    color: var(--jobstreet);
+    border: 1px solid var(--jobstreet);
+}
+
+.glassdoor-badge {
+    background: rgba(12, 170, 65, 0.1);
+    color: var(--glassdoor);
+    border: 1px solid var(--glassdoor);
+}
+
+.other-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+#loading {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-dim);
+}
+
+.spinner {
+    border: 2px solid var(--bg-light);
+    border-top: 2px solid var(--primary);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 1rem 1.5rem;
+    border-radius: 4px;
+    background: var(--bg-dark);
+    color: var(--text);
+    font-size: 0.9rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    border-left: 3px solid var(--primary);
+    animation: slideIn 0.3s ease;
+    z-index: 1000;
+}
+
+.notification.error {
+    border-left-color: var(--error);
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.main-nav {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: var(--bg-light);
+    border-radius: 8px;
+}
+
+.nav-link {
+    color: var(--text);
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.nav-link:hover {
+    color: var(--primary);
+}
+
+.nav-link.active {
+    background: var(--primary);
+    color: black;
+}
+
+@media (min-width: 640px) {
+    .search-container {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .search-box {
+        flex: 1;
+    }
+    
+    button#searchButton {
+        margin-top: 0;
+    }
+}

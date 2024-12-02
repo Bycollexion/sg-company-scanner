@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: sg-company-scanner
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -c gunicorn.conf.py app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: FLASK_ENV
+        value: production
+    healthCheckPath: /
+    autoDeploy: true

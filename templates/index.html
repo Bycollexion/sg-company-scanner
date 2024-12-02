@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SG Company Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>SG Company Scanner</h1>
+        
+        <nav class="main-nav">
+            <a href="/" class="nav-link active">Search</a>
+            <a href="/game" class="nav-link">Memory Game</a>
+        </nav>
+
+        <div class="search-container">
+            <div class="search-box">
+                <textarea id="companyInput" placeholder="Enter company names (one per line)" rows="3"></textarea>
+            </div>
+            <button onclick="searchCompanies()" id="searchButton">
+                <span>SEARCH</span>
+                <span class="search-icon">🔍</span>
+            </button>
+        </div>
+
+        <div id="loading" style="display: none;">
+            <div class="spinner"></div>
+            <div class="loading-text">Searching companies across multiple sources...</div>
+        </div>
+
+        <div id="results" style="display: none;">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Company</th>
+                            <th>Employees</th>
+                            <th>Region</th>
+                            <th>Source</th>
+                            <th>Other Sources</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="noResults" style="display: none;">
+            <div class="no-results-message">
+                No results found. Try different company names.
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
