@@ -36,19 +36,19 @@ def get_session():
     if not hasattr(thread_local, "session"):
         session = requests.Session()
         
-        # Rotate between different user agents
+        # More realistic user agents
         user_agents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59'
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Edge/119.0.0.0'
         ]
         
         headers = {
             'User-Agent': random.choice(user_agents),
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
             'DNT': '1',
             'Connection': 'keep-alive',
@@ -57,16 +57,20 @@ def get_session():
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Site': 'none',
             'Sec-Fetch-User': '?1',
-            'Cache-Control': 'max-age=0'
+            'Cache-Control': 'max-age=0',
+            'Sec-Ch-Ua': '"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"macOS"'
         }
         
         session.headers.update(headers)
         
-        # Configure retry strategy
+        # Configure retry strategy with longer delays
         retry_strategy = Retry(
-            total=3,  # number of retries
-            backoff_factor=0.5,  # wait 0.5, 1, 2, 4... seconds between retries
-            status_forcelist=[429, 500, 502, 503, 504]  # retry on these status codes
+            total=3,
+            backoff_factor=1.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "POST", "OPTIONS"]
         )
         
         # Configure connection pooling and timeouts
@@ -85,12 +89,25 @@ def get_session():
 
 def extract_text_without_recursion(element):
     """Extract text from HTML elements without recursive calls."""
+    if not element:
+        return ""
+        
     try:
+        # Get direct text content
+        text = element.string
+        if text and text.strip():
+            return text.strip()
+            
+        # Get text from immediate children
         texts = []
-        for descendant in element.descendants:
-            if isinstance(descendant, str) and descendant.strip():
-                texts.append(descendant.strip())
+        for child in element.children:
+            if isinstance(child, str) and child.strip():
+                texts.append(child.strip())
+            elif hasattr(child, 'string') and child.string and child.string.strip():
+                texts.append(child.string.strip())
+        
         return ' '.join(texts)
+        
     except Exception as e:
         print(f"Error extracting text: {str(e)}")
         return ""
@@ -201,15 +218,23 @@ def extract_from_google(company_name, session):
                 print(f"Google response status: {response.status_code}")
                 
                 if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser', parse_only=SoupStrainer(['div', 'span']))
+                    # Use a simpler parsing approach
+                    soup = BeautifulSoup(response.text, 'html.parser')
                     
-                    # Get all text snippets from search results
+                    # Only get direct text from specific divs
                     snippets = []
-                    for div in soup.find_all(['div', 'span']):
-                        text = extract_text_without_recursion(div)
-                        if text:
-                            snippets.append(text.lower())
                     
+                    # Search result divs
+                    for div in soup.select('div.VwiC3b'):
+                        if div and div.string:
+                            snippets.append(div.string.lower())
+                    
+                    # Description divs
+                    for div in soup.select('div.IsZvec'):
+                        if div and div.string:
+                            snippets.append(div.string.lower())
+                            
+                    # Combine all text
                     text_content = ' '.join(snippets)
                     
                     # Enhanced patterns for employee count
