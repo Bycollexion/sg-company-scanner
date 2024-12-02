@@ -8,6 +8,6 @@ services:
       - key: PYTHON_VERSION
         value: 3.9.0
       - key: PORT
-        value: 10000
+        value: 5003
     healthCheckPath: /
     autoDeploy: true
