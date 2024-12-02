@@ -38,60 +38,96 @@ def get_session():
 
 def extract_from_linkedin(company_name, session):
     try:
-        search_url = f"https://www.linkedin.com/company/{company_name.lower().replace(' ', '-')}"
-        response = session.get(search_url, timeout=10)
+        # Try both direct company name and with hyphens
+        company_slug = company_name.lower().replace(' ', '-')
+        search_urls = [
+            f"https://www.linkedin.com/company/{company_slug}",
+            f"https://www.linkedin.com/company/{company_name.lower()}"
+        ]
         
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'lxml')
-            text_content = soup.get_text().lower()
+        for search_url in search_urls:
+            response = session.get(search_url, timeout=10)
             
-            employee_patterns = [
-                r'([\d,]+)\s*employees',
-                r'([\d,]+)\s*workers',
-                r'([\d,]+)\s*staff',
-                r'team of\s*([\d,]+)',
-            ]
-            
-            for pattern in employee_patterns:
-                match = re.search(pattern, text_content, re.IGNORECASE)
-                if match:
-                    count = int(match.group(1).replace(',', ''))
-                    return {
-                        'count': count,
-                        'source': 'LinkedIn',
-                        'url': search_url,
-                        'is_sg': 'Singapore' in response.text or 'SG' in response.text
-                    }
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'lxml')
+                text_content = soup.get_text().lower()
+                
+                # Enhanced patterns for employee count
+                employee_patterns = [
+                    r'([\d,\.]+)[\+\s]*employees',
+                    r'([\d,\.]+)[\+\s]*workers',
+                    r'([\d,\.]+)[\+\s]*staff',
+                    r'team of\s*([\d,\.]+)',
+                    r'([\d,\.]+)\s*people',
+                    r'([\d,\.]+)k\+?\s*employees',
+                ]
+                
+                for pattern in employee_patterns:
+                    match = re.search(pattern, text_content, re.IGNORECASE)
+                    if match:
+                        count_str = match.group(1).replace(',', '')
+                        if 'k' in count_str.lower():
+                            count = float(count_str.lower().replace('k', '')) * 1000
+                        else:
+                            count = float(count_str)
+                        return {
+                            'count': int(count),
+                            'source': 'LinkedIn',
+                            'url': search_url,
+                            'is_sg': 'Singapore' in response.text or 'SG' in response.text
+                        }
     except Exception as e:
         print(f"LinkedIn error for {company_name}: {str(e)}")
     return None
 
 def extract_from_google(company_name, session):
     try:
-        search_url = f"https://www.google.com/search?q={company_name}+singapore+number+of+employees+site:linkedin.com+OR+site:glassdoor.com+OR+site:jobstreet.com.sg"
-        response = session.get(search_url, timeout=10)
+        # Enhanced search queries
+        search_queries = [
+            f"{company_name} singapore employees site:linkedin.com",
+            f"{company_name} singapore number of employees",
+            f"{company_name} singapore company size",
+            f"{company_name} singapore workforce"
+        ]
         
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'lxml')
-            text_content = soup.get_text().lower()
+        for query in search_queries:
+            search_url = f"https://www.google.com/search?q={query}"
+            response = session.get(search_url, timeout=10)
             
-            employee_patterns = [
-                r'([\d,]+)\s*employees',
-                r'([\d,]+)\s*workers',
-                r'([\d,]+)\s*staff',
-                r'team of\s*([\d,]+)',
-            ]
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'lxml')
+                text_content = soup.get_text().lower()
+                
+                # Enhanced patterns for employee count
+                employee_patterns = [
+                    r'([\d,\.]+)[\+\s]*employees',
+                    r'([\d,\.]+)[\+\s]*workers',
+                    r'([\d,\.]+)[\+\s]*staff',
+                    r'team of\s*([\d,\.]+)',
+                    r'([\d,\.]+)\s*people',
+                    r'([\d,\.]+)k\+?\s*employees',
+                    r'company size:\s*([\d,\.]+)',
+                    r'workforce of\s*([\d,\.]+)'
+                ]
+                
+                for pattern in employee_patterns:
+                    match = re.search(pattern, text_content, re.IGNORECASE)
+                    if match:
+                        count_str = match.group(1).replace(',', '')
+                        if 'k' in count_str.lower():
+                            count = float(count_str.lower().replace('k', '')) * 1000
+                        else:
+                            count = float(count_str)
+                        return {
+                            'count': int(count),
+                            'source': 'Google Search',
+                            'url': search_url,
+                            'is_sg': True
+                        }
             
-            for pattern in employee_patterns:
-                match = re.search(pattern, text_content, re.IGNORECASE)
-                if match:
-                    count = int(match.group(1).replace(',', ''))
-                    return {
-                        'count': count,
-                        'source': 'Google Search',
-                        'url': search_url,
-                        'is_sg': True  # Since we specifically searched for Singapore
-                    }
+            # Add delay between Google searches
+            time.sleep(random.uniform(1, 2))
+            
     except Exception as e:
         print(f"Google error for {company_name}: {str(e)}")
     return None
