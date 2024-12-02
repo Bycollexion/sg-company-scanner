@@ -11,6 +11,9 @@ import json
 import os
 import json
 from pathlib import Path
+from urllib.parse import quote
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 app = Flask(__name__)
 thread_local = threading.local()
@@ -30,31 +33,77 @@ def save_leaderboard(scores):
 
 def get_session():
     if not hasattr(thread_local, "session"):
-        thread_local.session = requests.Session()
-        thread_local.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        session = requests.Session()
+        
+        # Rotate between different user agents
+        user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59'
+        ]
+        
+        headers = {
+            'User-Agent': random.choice(user_agents),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
             'Connection': 'keep-alive',
-        })
-        # Configure session with longer timeouts
-        thread_local.session.timeout = (5, 15)  # (connect timeout, read timeout)
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0'
+        }
+        
+        session.headers.update(headers)
+        
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=3,  # number of retries
+            backoff_factor=0.5,  # wait 0.5, 1, 2, 4... seconds between retries
+            status_forcelist=[429, 500, 502, 503, 504]  # retry on these status codes
+        )
+        
+        # Configure connection pooling and timeouts
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=10,
+            pool_maxsize=10
+        )
+        
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        
+        thread_local.session = session
+    
     return thread_local.session
 
 def extract_from_linkedin(company_name, session):
     try:
-        # Try both direct company name and with hyphens
+        # Try multiple variations of the company name
         company_variations = [
             company_name.lower(),
             company_name.lower().replace(' ', '-'),
             company_name.lower().replace(' ', ''),
             f"{company_name.lower()}-singapore",
-            f"{company_name.lower().replace(' ', '-')}-sg"
+            f"{company_name.lower().replace(' ', '-')}-sg",
+            company_name.lower().replace('pte', '').replace('ltd', '').strip(),
+            company_name.lower().replace('private', '').replace('limited', '').strip(),
+            company_name.lower().replace('singapore', '').replace('sg', '').strip()
         ]
+        
+        # Remove duplicates and empty strings
+        company_variations = list(set(filter(None, company_variations)))
+        print(f"Trying LinkedIn variations for {company_name}: {company_variations}")
         
         for company_slug in company_variations:
             search_url = f"https://www.linkedin.com/company/{company_slug}"
             try:
+                print(f"Trying LinkedIn URL: {search_url}")
                 response = session.get(search_url, timeout=(5, 15))
                 print(f"LinkedIn response for {company_name} ({company_slug}): {response.status_code}")
                 
@@ -71,7 +120,10 @@ def extract_from_linkedin(company_name, session):
                         r'([\d,\.]+)\s*people',
                         r'([\d,\.]+)k\+?\s*employees',
                         r'employs\s*([\d,\.]+)',
-                        r'workforce of\s*([\d,\.]+)'
+                        r'workforce of\s*([\d,\.]+)',
+                        r'company size[:\s]*([\d,\.]+)',
+                        r'([\d,\.]+)\s*total employees',
+                        r'([\d,\.]+)\s*professionals'
                     ]
                     
                     for pattern in employee_patterns:
@@ -83,7 +135,11 @@ def extract_from_linkedin(company_name, session):
                             else:
                                 count = float(count_str)
                             
-                            is_sg = 'singapore' in text_content.lower() or ' sg ' in text_content.lower()
+                            is_sg = ('singapore' in text_content.lower() or 
+                                   ' sg ' in text_content.lower() or 
+                                   'singapore office' in text_content.lower() or 
+                                   'singapore headquarters' in text_content.lower())
+                            
                             print(f"Found LinkedIn data for {company_name}: {count} employees, SG: {is_sg}")
                             
                             return {
@@ -92,6 +148,9 @@ def extract_from_linkedin(company_name, session):
                                 'url': search_url,
                                 'is_sg': is_sg
                             }
+                    
+                    print(f"No employee count found in LinkedIn page for {company_name} ({company_slug})")
+                
             except requests.exceptions.RequestException as e:
                 print(f"LinkedIn request error for {company_name} at {search_url}: {str(e)}")
                 continue
@@ -107,23 +166,38 @@ def extract_from_linkedin(company_name, session):
 
 def extract_from_google(company_name, session):
     try:
-        # Try multiple search queries
+        # Create multiple search queries for better coverage
         search_queries = [
-            f"{company_name} singapore company employees site:linkedin.com",
-            f"{company_name} singapore number of employees site:linkedin.com",
-            f"{company_name} singapore company size site:glassdoor.com",
-            f"{company_name} singapore employees site:jobstreet.com.sg"
+            f"{company_name} singapore employees site:linkedin.com",
+            f"{company_name} singapore company size",
+            f"{company_name} singapore workforce",
+            f"{company_name} singapore staff strength",
+            f"{company_name} singapore total employees",
+            f"{company_name} singapore careers number of employees",
+            f"{company_name} singapore about us employees"
         ]
         
-        for search_query in search_queries:
+        print(f"Trying Google search queries for {company_name}")
+        
+        for query in search_queries:
             try:
-                search_url = f"https://www.google.com/search?q={search_query}"
+                encoded_query = quote(query)
+                search_url = f"https://www.google.com/search?q={encoded_query}"
+                print(f"Trying Google query: {query}")
+                
                 response = session.get(search_url, timeout=(5, 15))
-                print(f"Google response for {company_name} (query: {search_query}): {response.status_code}")
+                print(f"Google response status: {response.status_code}")
                 
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.text, 'html.parser')
-                    text_content = soup.get_text().lower()
+                    
+                    # Get all text snippets from search results
+                    snippets = []
+                    for div in soup.find_all(['div', 'span', 'p']):
+                        if div.get_text():
+                            snippets.append(div.get_text().lower())
+                    
+                    text_content = ' '.join(snippets)
                     
                     # Enhanced patterns for employee count
                     employee_patterns = [
@@ -135,36 +209,16 @@ def extract_from_google(company_name, session):
                         r'([\d,\.]+)k\+?\s*employees',
                         r'employs\s*([\d,\.]+)',
                         r'workforce of\s*([\d,\.]+)',
-                        r'company size:\s*([\d,\.]+)',
-                        r'([\d,\.]+)\s*employees on linkedin'
+                        r'company size[:\s]*([\d,\.]+)',
+                        r'([\d,\.]+)\s*total employees',
+                        r'([\d,\.]+)\s*professionals',
+                        r'approximately\s*([\d,\.]+)',
+                        r'about\s*([\d,\.]+)\s*employees',
+                        r'over\s*([\d,\.]+)\s*employees'
                     ]
                     
-                    # First try to find in search result snippets
-                    snippets = soup.find_all(['div', 'span'], {'class': ['VwiC3b', 'aCOpRe']})
-                    for snippet in snippets:
-                        snippet_text = snippet.get_text().lower()
-                        for pattern in employee_patterns:
-                            match = re.search(pattern, snippet_text)
-                            if match:
-                                count_str = match.group(1).replace(',', '')
-                                if 'k' in count_str.lower():
-                                    count = float(count_str.lower().replace('k', '')) * 1000
-                                else:
-                                    count = float(count_str)
-                                
-                                is_sg = 'singapore' in snippet_text or ' sg ' in snippet_text
-                                print(f"Found Google snippet data for {company_name}: {count} employees, SG: {is_sg}")
-                                
-                                return {
-                                    'count': int(count),
-                                    'source': 'Google',
-                                    'url': search_url,
-                                    'is_sg': is_sg
-                                }
-                    
-                    # Then try in full page content
                     for pattern in employee_patterns:
-                        match = re.search(pattern, text_content)
+                        match = re.search(pattern, text_content, re.IGNORECASE)
                         if match:
                             count_str = match.group(1).replace(',', '')
                             if 'k' in count_str.lower():
@@ -172,8 +226,14 @@ def extract_from_google(company_name, session):
                             else:
                                 count = float(count_str)
                             
-                            is_sg = 'singapore' in text_content.lower() or ' sg ' in text_content.lower()
-                            print(f"Found Google page data for {company_name}: {count} employees, SG: {is_sg}")
+                            # Check if the result is specific to Singapore
+                            context = text_content[max(0, match.start() - 100):min(len(text_content), match.end() + 100)]
+                            is_sg = ('singapore' in context or 
+                                   ' sg ' in context or 
+                                   'singapore office' in context or 
+                                   'singapore headquarters' in context)
+                            
+                            print(f"Found Google data for {company_name}: {count} employees, SG: {is_sg}")
                             
                             return {
                                 'count': int(count),
@@ -181,15 +241,17 @@ def extract_from_google(company_name, session):
                                 'url': search_url,
                                 'is_sg': is_sg
                             }
-                
-                time.sleep(random.uniform(1, 2))
+                    
+                    print(f"No employee count found in Google results for query: {query}")
                 
             except requests.exceptions.RequestException as e:
-                print(f"Google request error for {company_name}: {str(e)}")
+                print(f"Google request error for {company_name} with query '{query}': {str(e)}")
                 continue
             except Exception as e:
-                print(f"Google parsing error for {company_name}: {str(e)}")
+                print(f"Google parsing error for {company_name} with query '{query}': {str(e)}")
                 continue
+            
+            time.sleep(random.uniform(1, 2))
             
     except Exception as e:
         print(f"Google general error for {company_name}: {str(e)}")
@@ -254,39 +316,39 @@ def extract_from_glassdoor(company_name, session):
     return None
 
 def extract_employee_count(company_name):
+    print(f"\nStarting extraction for company: {company_name}")
     try:
         session = get_session()
         sources = []
         
-        # Try all sources
+        # Try LinkedIn first
+        print(f"Trying LinkedIn for {company_name}")
         linkedin_data = extract_from_linkedin(company_name, session)
         if linkedin_data:
             sources.append(linkedin_data)
+            print(f"LinkedIn data found: {linkedin_data}")
+        else:
+            print(f"No LinkedIn data found for {company_name}")
         
-        time.sleep(random.uniform(1, 2))  # Random delay between requests
+        time.sleep(random.uniform(1, 2))
         
+        # Try Google next
+        print(f"Trying Google for {company_name}")
         google_data = extract_from_google(company_name, session)
         if google_data:
             sources.append(google_data)
-        
-        time.sleep(random.uniform(1, 2))
-        
-        jobstreet_data = extract_from_jobstreet(company_name, session)
-        if jobstreet_data:
-            sources.append(jobstreet_data)
-        
-        time.sleep(random.uniform(1, 2))
-        
-        glassdoor_data = extract_from_glassdoor(company_name, session)
-        if glassdoor_data:
-            sources.append(glassdoor_data)
+            print(f"Google data found: {google_data}")
+        else:
+            print(f"No Google data found for {company_name}")
         
         if sources:
+            print(f"Found {len(sources)} sources for {company_name}")
             # Sort sources by count to identify outliers
             sources.sort(key=lambda x: x['count'])
             
             # If we have multiple sources, try to identify the most reliable count
             if len(sources) > 1:
+                print(f"Multiple sources found for {company_name}, analyzing reliability")
                 # If counts are similar (within 20% difference), use the median
                 counts = [s['count'] for s in sources]
                 median_count = counts[len(counts)//2]
@@ -296,13 +358,15 @@ def extract_employee_count(company_name):
                 
                 if reliable_sources:
                     sources = reliable_sources
+                    print(f"Filtered to {len(reliable_sources)} reliable sources")
             
             # Prioritize Singapore-specific data
             sg_sources = [s for s in sources if s['is_sg']]
             if sg_sources:
                 sources = sg_sources
+                print(f"Found {len(sg_sources)} Singapore-specific sources")
             
-            # Return the most reliable source (preferring LinkedIn and Singapore-specific data)
+            # Return the most reliable source
             best_source = sources[0]
             if len(sources) > 1:
                 for source in sources:
@@ -310,7 +374,7 @@ def extract_employee_count(company_name):
                         best_source = source
                         break
             
-            return {
+            result = {
                 'company': company_name,
                 'employee_count': best_source['count'],
                 'is_sg': best_source['is_sg'],
@@ -324,7 +388,10 @@ def extract_employee_count(company_name):
                     } for s in sources if s != best_source
                 ]
             }
+            print(f"Final result for {company_name}: {result}")
+            return result
         
+        print(f"No sources found for {company_name}")
         return {
             'company': company_name,
             'employee_count': 'Not found',
@@ -342,7 +409,8 @@ def extract_employee_count(company_name):
             'is_sg': False,
             'source': 'Error',
             'url': '#',
-            'other_sources': []
+            'other_sources': [],
+            'error': str(e)
         }
 
 @app.route('/game')
@@ -377,40 +445,58 @@ def index():
 
 @app.route('/search', methods=['POST'])
 def search():
-    data = request.get_json()
-    
-    # Handle both single company and list of companies
-    if 'company' in data:
-        companies = [data['company']]
-    else:
-        companies = data.get('companies', [])
-    
-    if not companies:
-        return jsonify([])
-    
-    # Limit to 50 companies at a time
-    companies = companies[:50]
-    
-    # Process companies concurrently
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_company = {
-            executor.submit(extract_employee_count, company): company 
-            for company in companies
-        }
+    try:
+        data = request.get_json()
+        print(f"Received search request with data: {data}")
         
-        results = []
-        for future in as_completed(future_to_company):
-            try:
-                result = future.result()
-                if result:
-                    results.append(result)
-            except Exception as e:
-                print(f"Error processing company: {str(e)}")
+        # Handle both single company and list of companies
+        if 'company' in data:
+            companies = [data['company']]
+        else:
+            companies = data.get('companies', [])
+        
+        if not companies:
+            print("No companies provided in request")
+            return jsonify([])
+        
+        print(f"Processing companies: {companies}")
+        
+        # Process companies concurrently
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future_to_company = {
+                executor.submit(extract_employee_count, company): company 
+                for company in companies
+            }
             
-            # Add random delay to avoid rate limiting
-            time.sleep(random.uniform(0.5, 1.5))
-    
-    return jsonify(results)
+            results = []
+            for future in as_completed(future_to_company):
+                company = future_to_company[future]
+                try:
+                    result = future.result()
+                    print(f"Results for {company}: {result}")
+                    if result:
+                        results.append(result)
+                except Exception as e:
+                    print(f"Error processing company {company}: {str(e)}")
+                    results.append({
+                        'company': company,
+                        'employee_count': 'Error',
+                        'is_sg': False,
+                        'source': 'Error',
+                        'url': '#',
+                        'other_sources': [],
+                        'error': str(e)
+                    })
+                
+                # Add random delay to avoid rate limiting
+                time.sleep(random.uniform(0.5, 1.0))
+        
+        print(f"Final results: {results}")
+        return jsonify(results)
+        
+    except Exception as e:
+        print(f"Search endpoint error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
