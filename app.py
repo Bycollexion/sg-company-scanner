@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, render_template
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, SoupStrainer
 import requests
 from fake_useragent import UserAgent
 import re
@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import quote
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import sys
 
 app = Flask(__name__)
 thread_local = threading.local()
@@ -82,6 +83,18 @@ def get_session():
     
     return thread_local.session
 
+def extract_text_without_recursion(element):
+    """Extract text from HTML elements without recursive calls."""
+    try:
+        texts = []
+        for descendant in element.descendants:
+            if isinstance(descendant, str) and descendant.strip():
+                texts.append(descendant.strip())
+        return ' '.join(texts)
+    except Exception as e:
+        print(f"Error extracting text: {str(e)}")
+        return ""
+
 def extract_from_linkedin(company_name, session):
     try:
         # Try multiple variations of the company name
@@ -108,8 +121,8 @@ def extract_from_linkedin(company_name, session):
                 print(f"LinkedIn response for {company_name} ({company_slug}): {response.status_code}")
                 
                 if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    text_content = soup.get_text().lower()
+                    soup = BeautifulSoup(response.text, 'html.parser', parse_only=SoupStrainer(['p', 'div', 'span']))
+                    text_content = extract_text_without_recursion(soup).lower()
                     
                     # Enhanced patterns for employee count
                     employee_patterns = [
@@ -135,10 +148,10 @@ def extract_from_linkedin(company_name, session):
                             else:
                                 count = float(count_str)
                             
-                            is_sg = ('singapore' in text_content.lower() or 
-                                   ' sg ' in text_content.lower() or 
-                                   'singapore office' in text_content.lower() or 
-                                   'singapore headquarters' in text_content.lower())
+                            is_sg = ('singapore' in text_content or 
+                                   ' sg ' in text_content or 
+                                   'singapore office' in text_content or 
+                                   'singapore headquarters' in text_content)
                             
                             print(f"Found LinkedIn data for {company_name}: {count} employees, SG: {is_sg}")
                             
@@ -166,7 +179,6 @@ def extract_from_linkedin(company_name, session):
 
 def extract_from_google(company_name, session):
     try:
-        # Create multiple search queries for better coverage
         search_queries = [
             f"{company_name} singapore employees site:linkedin.com",
             f"{company_name} singapore company size",
@@ -189,13 +201,14 @@ def extract_from_google(company_name, session):
                 print(f"Google response status: {response.status_code}")
                 
                 if response.status_code == 200:
-                    soup = BeautifulSoup(response.text, 'html.parser')
+                    soup = BeautifulSoup(response.text, 'html.parser', parse_only=SoupStrainer(['div', 'span']))
                     
                     # Get all text snippets from search results
                     snippets = []
-                    for div in soup.find_all(['div', 'span', 'p']):
-                        if div.get_text():
-                            snippets.append(div.get_text().lower())
+                    for div in soup.find_all(['div', 'span']):
+                        text = extract_text_without_recursion(div)
+                        if text:
+                            snippets.append(text.lower())
                     
                     text_content = ' '.join(snippets)
                     
@@ -211,10 +224,7 @@ def extract_from_google(company_name, session):
                         r'workforce of\s*([\d,\.]+)',
                         r'company size[:\s]*([\d,\.]+)',
                         r'([\d,\.]+)\s*total employees',
-                        r'([\d,\.]+)\s*professionals',
-                        r'approximately\s*([\d,\.]+)',
-                        r'about\s*([\d,\.]+)\s*employees',
-                        r'over\s*([\d,\.]+)\s*employees'
+                        r'([\d,\.]+)\s*professionals'
                     ]
                     
                     for pattern in employee_patterns:
@@ -499,5 +509,6 @@ def search():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
+    sys.setrecursionlimit(1000)  # Set a reasonable recursion limit
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
